@@ -81,6 +81,7 @@ internal class Program
     private static async Task FilterAndProcessPaths(string search)
     {
         int countOfSlashes = search.Count(c => c == Path.DirectorySeparatorChar);
+        bool containsUppercase = search.Any(c => c >= 65 && c <= 90);
 
         await foreach (string path in PathChannel.Reader.ReadAllAsync())
         {
@@ -92,7 +93,13 @@ internal class Program
                 : string.Join(Path.DirectorySeparatorChar,
                     values: path.Split(Path.DirectorySeparatorChar).TakeLast(countOfSlashes + 1));
 
-            if (KMP.FuzzyMatch(searchPath, search))
+            if (KMP.FuzzyMatch(path: containsUppercase
+                        ? searchPath
+                        : searchPath.ToLower(),
+                    input: containsUppercase
+                        ? search
+                        : search.ToLower()
+                    ))
                 Console.WriteLine(path);
         }
     }

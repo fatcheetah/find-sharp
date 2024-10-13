@@ -61,6 +61,6 @@ public static class KMP
 
     public static bool FuzzyMatch(string path, string input)
     {
-        return KMPSearch(text: path.ToLower(), pattern: input.ToLower());
+        return KMPSearch(text: path, pattern: input);
     }
 }
