@@ -8,7 +8,6 @@ internal class Program
 {
     private const byte DtDir = 4;
     private static readonly Channel<string> PathChannel = Channel.CreateUnbounded<string>();
-    private static readonly Channel<string> FilteredChannel = Channel.CreateUnbounded<string>();
 
     private static async Task Main(string[] args)
     {
@@ -81,11 +80,17 @@ internal class Program
 
     private static async Task FilterAndProcessPaths(string search)
     {
+        int countOfSlashes = search.Count(c => c == Path.DirectorySeparatorChar);
+
         await foreach (string path in PathChannel.Reader.ReadAllAsync())
         {
-            string lastSegment = Path.GetFileName(path);
-            if (KMP.FuzzyMatch(lastSegment, search))
-                Console.WriteLine($"{path}");
+            string searchPath = countOfSlashes == 0
+                ? Path.GetFileName(path)
+                : string.Join(Path.DirectorySeparatorChar,
+                    values: path.Split(Path.DirectorySeparatorChar).TakeLast(countOfSlashes + 1));
+
+            if (KMP.FuzzyMatch(searchPath, search))
+                Console.WriteLine(path);
         }
     }
 }
