@@ -84,6 +84,9 @@ internal class Program
 
         await foreach (string path in PathChannel.Reader.ReadAllAsync())
         {
+            if (path.EndsWith(".") || path.EndsWith(".."))
+                continue;
+            
             string searchPath = countOfSlashes == 0
                 ? Path.GetFileName(path)
                 : string.Join(Path.DirectorySeparatorChar,
