@@ -9,18 +9,18 @@ internal class Program
     private const byte DtDir = 4;
     private static readonly Channel<string> PathChannel = Channel.CreateUnbounded<string>();
     private static readonly Channel<string> FilteredChannel = Channel.CreateUnbounded<string>();
-    private static readonly SemaphoreSlim Semaphore = new(16);
 
     private static async Task Main(string[] args)
     {
         string rootDirectory = Directory.GetCurrentDirectory();
-        string? searchInput = args.Length > 0 ? args[0] : null;
+        string? searchInput = args.Length > 0
+            ? args[0]
+            : null;
 
         if (searchInput == null)
             return;
 
-        Task matchTask = Task.Run(() => ProcessMatchBuffer(searchInput));
-        Task filterTask = Task.Run(() => FilterPaths(searchInput));
+        Task filterAndProcessTask = Task.Run(() => FilterAndProcessPaths(searchInput));
 
         try
         {
@@ -33,9 +33,7 @@ internal class Program
         finally
         {
             PathChannel.Writer.Complete();
-            await filterTask;
-            FilteredChannel.Writer.Complete();
-            await matchTask;
+            await filterAndProcessTask;
         }
     }
 
@@ -50,17 +48,8 @@ internal class Program
         {
             while (directories.TryDequeue(out string? currentDirectory))
             {
-                await Semaphore.WaitAsync();
-                tasks.Add(Task.Run(async () => {
-                    try
-                    {
-                        await TraverseDirectoryAsync(currentDirectory, directories);
-                    }
-                    finally
-                    {
-                        Semaphore.Release();
-                    }
-                }));
+                Task task = Task.Run(async () => { await TraverseDirectoryAsync(currentDirectory, directories); });
+                tasks.Add(task);
             }
 
             await Task.WhenAll(tasks);
@@ -90,23 +79,13 @@ internal class Program
         return Task.CompletedTask;
     }
 
-    private static async Task FilterPaths(string search)
+    private static async Task FilterAndProcessPaths(string search)
     {
         await foreach (string path in PathChannel.Reader.ReadAllAsync())
         {
             string lastSegment = Path.GetFileName(path);
             if (KMP.FuzzyMatch(lastSegment, search))
-            {
-                FilteredChannel.Writer.TryWrite(path);
-            }
-        }
-    }
-
-    private static async Task ProcessMatchBuffer(string search)
-    {
-        await foreach (string path in FilteredChannel.Reader.ReadAllAsync())
-        {
-            Console.WriteLine($"{path}");
+                Console.WriteLine($"{path}");
         }
     }
 }
