@@ -1,25 +1,28 @@
+using System.Numerics;
+using System.Text;
+
 namespace find_sharp;
 
 public static class KMP
 {
     public static int[] ComputeLPSArray(string pattern)
     {
-        int[] lps = new int[pattern.Length];
-        int length = 0;
+        int length = pattern.Length;
+        int[] lps = new int[length];
+        int len = 0;
         int i = 1;
-        lps[0] = 0;
 
-        while (i < pattern.Length)
-            if (pattern[i] == pattern[length])
+        while (i < length)
+            if (pattern[i] == pattern[len])
             {
-                length++;
-                lps[i] = length;
+                len++;
+                lps[i] = len;
                 i++;
             }
             else
             {
-                if (length != 0)
-                    length = lps[length - 1];
+                if (len != 0)
+                    len = lps[len - 1];
                 else
                 {
                     lps[i] = 0;
@@ -58,6 +61,6 @@ public static class KMP
 
     public static bool FuzzyMatch(string path, string input)
     {
-        return KMPSearch(text: path, pattern: input);
+        return KMPSearch(text: path.ToLower(), pattern: input.ToLower());
     }
 }

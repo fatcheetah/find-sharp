@@ -1,52 +1,30 @@
 ﻿using System.Collections.Concurrent;
-using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using System.Threading.Channels;
 
 namespace find_sharp;
 
-internal partial class Interop
-{
-    [DllImport("libc.so.6")]
-    public static extern IntPtr opendir(string name);
-
-    [DllImport("libc.so.6")]
-    public static extern IntPtr readdir(IntPtr dirp);
-
-    [DllImport("libc.so.6")]
-    public static extern int closedir(IntPtr dirp);
-}
-
-[StructLayout(LayoutKind.Sequential)]
-public struct dirent
-{
-    public ulong d_ino;
-    public long d_off;
-    public ushort d_reclen;
-    public byte d_type;
-
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
-    public string d_name;
-}
-
-
 internal class Program
 {
-    private const byte DT_DIR = 4;
-    private static ConcurrentQueue<string> matchBuffer = new();
-    private static bool processing = true;
+    private const byte DtDir = 4;
+    private static readonly Channel<string> PathChannel = Channel.CreateUnbounded<string>();
+    private static readonly Channel<string> FilteredChannel = Channel.CreateUnbounded<string>();
+    private static readonly SemaphoreSlim Semaphore = new(16);
 
-    private static void Main(string[] args)
+    private static async Task Main(string[] args)
     {
-        string rootDirectory = args.Length > 0 ? args[0] : "/home/cream/fun";
-        Console.WriteLine($"Starting with root directory: {rootDirectory}");
+        string rootDirectory = Directory.GetCurrentDirectory();
+        string? searchInput = args.Length > 0 ? args[0] : null;
 
-        Thread matchThread = new Thread(ProcessMatchBuffer);
-        matchThread.Start();
+        if (searchInput == null)
+            return;
+
+        Task matchTask = Task.Run(() => ProcessMatchBuffer(searchInput));
+        Task filterTask = Task.Run(() => FilterPaths(searchInput));
 
         try
         {
-            var executionTimeAttribute = new ExecutionTimeAttribute();
-            executionTimeAttribute.MeasureExecutionTime(() => TraverseFileTree(rootDirectory));
+            await TraverseFileTreeAsync(rootDirectory);
         }
         catch (Exception ex)
         {
@@ -54,58 +32,81 @@ internal class Program
         }
         finally
         {
-            processing = false;
-            matchThread.Join();
+            PathChannel.Writer.Complete();
+            await filterTask;
+            FilteredChannel.Writer.Complete();
+            await matchTask;
         }
     }
 
-    private static void TraverseFileTree(string rootDirectory)
+    private static async Task TraverseFileTreeAsync(string rootDirectory)
     {
         ConcurrentQueue<string> directories = new();
         directories.Enqueue(rootDirectory);
 
-        while (directories.TryDequeue(out string? currentDirectory))
+        List<Task> tasks = new();
+
+        while (!directories.IsEmpty)
         {
-            IntPtr dirp = Interop.opendir(currentDirectory);
-            if (dirp == IntPtr.Zero)
+            while (directories.TryDequeue(out string? currentDirectory))
             {
-                Console.WriteLine($"Failed to open directory: {currentDirectory}");
-                continue;
+                await Semaphore.WaitAsync();
+                tasks.Add(Task.Run(async () => {
+                    try
+                    {
+                        await TraverseDirectoryAsync(currentDirectory, directories);
+                    }
+                    finally
+                    {
+                        Semaphore.Release();
+                    }
+                }));
             }
 
-            IntPtr entry;
-            while ((entry = Interop.readdir(dirp)) != IntPtr.Zero)
-            {
-                dirent dir = Marshal.PtrToStructure<dirent>(entry);
-                string path = Path.Combine(currentDirectory, dir.d_name);
-
-                matchBuffer.Enqueue(path);
-
-                if (dir.d_type == DT_DIR && dir.d_name != "." && dir.d_name != "..")
-                {
-                    directories.Enqueue(path);
-                }
-            }
-
-            Interop.closedir(dirp);
+            await Task.WhenAll(tasks);
+            tasks.Clear();
         }
     }
 
-    private static void ProcessMatchBuffer()
+    private static Task TraverseDirectoryAsync(string currentDirectory, ConcurrentQueue<string> directories)
     {
-        while (processing || !matchBuffer.IsEmpty)
+        IntPtr dirp = Interop.opendir(currentDirectory);
+        if (dirp == IntPtr.Zero)
+            return Task.CompletedTask;
+
+        IntPtr entry;
+        while ((entry = Interop.readdir(dirp)) != IntPtr.Zero)
         {
-            if (matchBuffer.TryDequeue(out string? path))
+            Dirent dir = Marshal.PtrToStructure<Dirent>(entry);
+            string path = Path.Combine(currentDirectory, dir.d_name);
+
+            PathChannel.Writer.TryWrite(path);
+
+            if (dir.d_type == DtDir && dir.d_name != "." && dir.d_name != "..")
+                directories.Enqueue(path);
+        }
+
+        Interop.closedir(dirp);
+        return Task.CompletedTask;
+    }
+
+    private static async Task FilterPaths(string search)
+    {
+        await foreach (string path in PathChannel.Reader.ReadAllAsync())
+        {
+            string lastSegment = Path.GetFileName(path);
+            if (KMP.FuzzyMatch(lastSegment, search))
             {
-                if (KMP.FuzzyMatch(path, "http"))
-                {
-                    Console.WriteLine($"Found entry containing 'http': {path}");
-                }
+                FilteredChannel.Writer.TryWrite(path);
             }
-            else
-            {
-                Thread.Sleep(100); // Avoid busy-waiting
-            }
+        }
+    }
+
+    private static async Task ProcessMatchBuffer(string search)
+    {
+        await foreach (string path in FilteredChannel.Reader.ReadAllAsync())
+        {
+            Console.WriteLine($"{path}");
         }
     }
 }

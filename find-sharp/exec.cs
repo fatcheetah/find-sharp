@@ -3,10 +3,10 @@ using System.Diagnostics;
 [AttributeUsage(AttributeTargets.Method)]
 public class ExecutionTimeAttribute : Attribute
 {
-    public void MeasureExecutionTime(Action method)
+    public async Task MeasureExecutionTimeAsync(Func<Task> method)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
-        method();
+        await method();
         stopwatch.Stop();
         Console.WriteLine($"Execution Time: {stopwatch.ElapsedMilliseconds} ms");
     }
