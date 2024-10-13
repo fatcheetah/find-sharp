@@ -1,0 +1,88 @@
+﻿using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
+
+internal partial class Interop
+{
+    [DllImport("libc.so.6")]
+    public static extern IntPtr opendir(string name);
+
+    [DllImport("libc.so.6")]
+    public static extern int scandir(string dirp, out IntPtr namelist, IntPtr filter, IntPtr compar);
+
+    [DllImport("libc.so.6")]
+    public static extern void free(IntPtr ptr);
+
+    [DllImport("libc.so.6")]
+    public static extern int closedir(IntPtr dirp);
+}
+
+internal class Program
+{
+    private const byte DT_DIR = 4;
+
+    private static void Main(string[] args)
+    {
+        string rootDirectory = args.Length > 0
+            ? args[0]
+            : "/home/cream/fun";
+        Console.WriteLine($"Starting with root directory: {rootDirectory}");
+
+        try
+        {
+            ExecutionTimeAttribute executionTimeAttribute = new();
+            executionTimeAttribute.MeasureExecutionTime(() => TraverseFileTree(rootDirectory));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Exception occurred: {ex.Message}");
+        }
+    }
+
+    private static void TraverseFileTree(string rootDirectory)
+    {
+        ConcurrentQueue<string> directories = new();
+        directories.Enqueue(rootDirectory);
+
+        while (directories.TryDequeue(out string? currentDirectory))
+        {
+            // Console.WriteLine($"Opening directory: {currentDirectory}");
+            IntPtr namelist;
+            int n = Interop.scandir(currentDirectory, out namelist, IntPtr.Zero, IntPtr.Zero);
+            if (n < 0)
+            {
+                Console.WriteLine($"Failed to open directory: {currentDirectory}");
+                continue;
+            }
+
+            IntPtr currentEntryPtr = namelist;
+            for (int i = 0; i < n; i++)
+            {
+                IntPtr entryPtr = Marshal.ReadIntPtr(currentEntryPtr, i * IntPtr.Size);
+                dirent dir = Marshal.PtrToStructure<dirent>(entryPtr);
+                string path = Path.Combine(currentDirectory, dir.d_name);
+
+                // Console.WriteLine($"Found entry: {path}");
+
+                if (dir.d_type == DT_DIR && dir.d_name != "." && dir.d_name != "..")
+                {
+                    directories.Enqueue(path);
+                }
+
+                Interop.free(entryPtr);
+            }
+
+            Interop.free(namelist);
+        }
+    }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct dirent
+{
+    public ulong d_ino;
+    public long d_off;
+    public ushort d_reclen;
+    public byte d_type;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+    public string d_name;
+}
