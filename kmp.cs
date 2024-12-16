@@ -2,14 +2,20 @@ namespace find_sharp;
 
 public static class KMP
 {
+    private static int[]? cachedLps;
+
     private static int[] ComputeLPSArray(string pattern)
     {
+        if (cachedLps != null) 
+            return cachedLps;
+
         int length = pattern.Length;
         int[] lps = new int[length];
         int len = 0;
         int i = 1;
 
         while (i < length)
+        {
             if (pattern[i] == pattern[len])
             {
                 len++;
@@ -26,6 +32,9 @@ public static class KMP
                     i++;
                 }
             }
+        }
+
+        cachedLps = lps;
         return lps;
     }
 
