@@ -92,7 +92,7 @@ internal static class Program
                 : string.Join(Path.DirectorySeparatorChar,
                     values: path.Split(Path.DirectorySeparatorChar).TakeLast(countOfSlashes + 1));
 
-            if (KMP.FuzzyMatch(path: containsUppercase ? searchPath : searchPath.ToLower(),
+            if (VSearch.SignalSubStringMatcher(path: containsUppercase ? searchPath : searchPath.ToLower(),
                     input: containsUppercase ? search : search.ToLower()))
                 Console.WriteLine(path);
         }

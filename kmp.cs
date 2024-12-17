@@ -1,72 +1,73 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
+
 namespace find_sharp;
 
-public static class KMP
+public static class VSearch
 {
-    private static int[]? cachedLps;
-
-    private static int[] ComputeLPSArray(string pattern)
+    public static bool SignalSubStringMatcher(string path, string input)
     {
-        if (cachedLps != null) 
-            return cachedLps;
+        if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(input) || input.Length > path.Length)
+            return false;
 
-        int length = pattern.Length;
-        int[] lps = new int[length];
-        int len = 0;
-        int i = 1;
-
-        while (i < length)
-        {
-            if (pattern[i] == pattern[len])
-            {
-                len++;
-                lps[i] = len;
-                i++;
-            }
-            else
-            {
-                if (len != 0)
-                    len = lps[len - 1];
-                else
-                {
-                    lps[i] = 0;
-                    i++;
-                }
-            }
-        }
-
-        cachedLps = lps;
-        return lps;
+        if (Avx2.IsSupported && path.Length >= Vector256<byte>.Count)
+            return Avx2SubStringMatcher(path, input);
+        if (Sse2.IsSupported && path.Length >= Vector128<byte>.Count)
+            return Sse2SubStringMatcher(path, input);
+        
+        return FallbackSubStringMatcher(path, input);
     }
 
-    private static bool KMPSearch(string text, string pattern)
+    private static unsafe bool Avx2SubStringMatcher(string path, string input)
     {
-        int[] lps = ComputeLPSArray(pattern);
-        int i = 0;
-        int j = 0;
-
-        while (i < text.Length)
+        fixed (char* pPath = path, pInput = input)
         {
-            if (pattern[j] == text[i])
-            {
-                i++;
-                j++;
-            }
+            byte* bPath = (byte*)pPath;
+            byte* bInput = (byte*)pInput;
+            int pathLength = path.Length * 2;
+            int inputLength = input.Length * 2;
 
-            if (j == pattern.Length)
-                return true;
-            else if (i < text.Length && pattern[j] != text[i])
-            {
-                if (j != 0)
-                    j = lps[j - 1];
-                else
-                    i++;
-            }
+            for (int i = 0; i <= pathLength - inputLength; i += 2)
+                if (CompareMemory(bPath + i, bInput, inputLength))
+                    return true;
         }
+
         return false;
     }
 
-    public static bool FuzzyMatch(string path, string input)
+    private static unsafe bool Sse2SubStringMatcher(string path, string input)
     {
-        return KMPSearch(text: path, pattern: input);
+        fixed (char* pPath = path, pInput = input)
+        {
+            byte* bPath = (byte*)pPath;
+            byte* bInput = (byte*)pInput;
+            int pathLength = path.Length * 2;
+            int inputLength = input.Length * 2;
+
+            for (int i = 0; i <= pathLength - inputLength; i += 2)
+                if (CompareMemory(bPath + i, bInput, inputLength))
+                    return true;
+        }
+
+        return false;
+    }
+
+    private static bool FallbackSubStringMatcher(string path, string input)
+    {
+        return path.Contains(input, StringComparison.Ordinal);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe bool CompareMemory(byte* p1, byte* p2, int length)
+    {
+        int i;
+        for (i = 0; i <= length - sizeof(long); i += sizeof(long))
+            if (*(long*)(p1 + i) != *(long*)(p2 + i))
+                return false;
+        for (; i < length; i++)
+            if (*(p1 + i) != *(p2 + i))
+                return false;
+        return true;
     }
 }
