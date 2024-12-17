@@ -59,14 +59,18 @@ internal static class Program
             return Task.CompletedTask;
 
         IntPtr entry;
+        Dirent dirent = new() {
+            d_name = null
+        };
+        
         while ((entry = Interop.readdir(dirp)) != IntPtr.Zero)
         {
-            var dir = Marshal.PtrToStructure<Dirent>(entry);
+            Marshal.PtrToStructure(entry, dirent);
 
-            PathChannel.Writer.TryWrite((currentDirectory.AsMemory(), dir.d_name.AsMemory()));
+            PathChannel.Writer.TryWrite((currentDirectory.AsMemory(), dirent!.d_name.AsMemory()));
 
-            if (dir.d_type == DtDir && dir.d_name != "." && dir.d_name != "..")
-                directories.Enqueue(Path.Combine(currentDirectory, dir.d_name));
+            if (dirent.d_type == DtDir && dirent.d_name != "." && dirent.d_name != ".." && dirent.d_name != null)
+                    directories.Enqueue(Path.Combine(currentDirectory, dirent.d_name));
         }
 
         Interop.closedir(dirp);

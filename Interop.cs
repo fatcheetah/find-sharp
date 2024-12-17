@@ -15,7 +15,7 @@ internal partial class Interop
 }
 
 [StructLayout(LayoutKind.Sequential)]
-public struct Dirent
+public class Dirent
 {
     public ulong d_ino;
     public long d_off;
@@ -23,5 +23,5 @@ public struct Dirent
     public byte d_type;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
-    public string d_name;
+    public required string? d_name;
 }
