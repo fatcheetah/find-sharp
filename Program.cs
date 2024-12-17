@@ -7,7 +7,7 @@ namespace find_sharp;
 internal static class Program
 {
     private const byte DtDir = 4;
-    private static readonly Channel<string> PathChannel = Channel.CreateUnbounded<string>();
+    private static readonly Channel<(ReadOnlyMemory<char>,ReadOnlyMemory<char>)> PathChannel = Channel.CreateUnbounded<(ReadOnlyMemory<char>, ReadOnlyMemory<char>)>();
 
     private static async Task Main(string[] args)
     {
@@ -19,21 +19,16 @@ internal static class Program
         if (searchInput == null)
             return;
 
-        Task filterAndProcessTask = Task.Run(() => FilterAndProcessPaths(searchInput));
-
-        try
-        {
-            await TraverseFileTreeAsync(rootDirectory);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Exception occurred: {ex.Message}");
-        }
-        finally
-        {
-            PathChannel.Writer.Complete();
-            await filterAndProcessTask;
-        }
+        var traverse = Task.Run(async () =>
+            await TraverseFileTreeAsync(rootDirectory)
+        );
+        var filterAndProcessTask = Task.Run(async () =>
+            await FilterAndProcessPaths(searchInput)
+        );
+        
+        await traverse;
+        PathChannel.Writer.Complete();
+        await filterAndProcessTask;
     }
 
     private static async Task TraverseFileTreeAsync(string rootDirectory)
@@ -46,7 +41,9 @@ internal static class Program
         {
             while (directories.TryDequeue(out string? currentDirectory))
             {
-                Task task = Task.Run(async () => { await TraverseDirectoryAsync(currentDirectory, directories); });
+                Task task = Task.Run(async () => {
+                    await TraverseDirectoryAsync(currentDirectory, directories);
+                });
                 tasks.Add(task);
             }
 
@@ -64,13 +61,12 @@ internal static class Program
         IntPtr entry;
         while ((entry = Interop.readdir(dirp)) != IntPtr.Zero)
         {
-            Dirent dir = Marshal.PtrToStructure<Dirent>(entry);
-            string path = Path.Combine(currentDirectory, dir.d_name);
+            var dir = Marshal.PtrToStructure<Dirent>(entry);
 
-            PathChannel.Writer.TryWrite(path);
+            PathChannel.Writer.TryWrite((currentDirectory.AsMemory(), dir.d_name.AsMemory()));
 
             if (dir.d_type == DtDir && dir.d_name != "." && dir.d_name != "..")
-                directories.Enqueue(path);
+                directories.Enqueue(Path.Combine(currentDirectory, dir.d_name));
         }
 
         Interop.closedir(dirp);
@@ -79,22 +75,9 @@ internal static class Program
 
     private static async Task FilterAndProcessPaths(string search)
     {
-        int countOfSlashes = search.Count(c => c == Path.DirectorySeparatorChar);
-        bool containsUppercase = search.Any(c => c >= 65 && c <= 90);
-
-        await foreach (string path in PathChannel.Reader.ReadAllAsync())
+        await foreach ((ReadOnlyMemory<char>? dir, ReadOnlyMemory<char>? path) in PathChannel.Reader.ReadAllAsync())
         {
-            if (path.EndsWith(".") || path.EndsWith(".."))
-                continue;
-
-            string searchPath = countOfSlashes == 0
-                ? Path.GetFileName(path)
-                : string.Join(Path.DirectorySeparatorChar,
-                    values: path.Split(Path.DirectorySeparatorChar).TakeLast(countOfSlashes + 1));
-
-            if (VSearch.SignalSubStringMatcher(path: containsUppercase ? searchPath : searchPath.ToLower(),
-                    input: containsUppercase ? search : search.ToLower()))
-                Console.WriteLine(path);
+            if (VSearch.SubStringMatcher(path, search)) Console.WriteLine($"{dir}/{path}");
         }
     }
 }
