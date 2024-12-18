@@ -37,7 +37,7 @@ internal static class Program
         {
             while (directories.TryDequeue(out ReadOnlyMemory<char> currentDirectory))
             {
-                var task = Task.Run(async () => { await TraverseDirectoryAsync(currentDirectory, directories); });
+                Task task = Task.Run(async () => { await TraverseDirectoryAsync(currentDirectory, ref directories); });
                 tasks.Add(task);
             }
 
@@ -47,37 +47,34 @@ internal static class Program
     }
 
     private static Task TraverseDirectoryAsync(ReadOnlyMemory<char> currentDirectory,
-        ConcurrentQueue<ReadOnlyMemory<char>> directories)
+        ref ConcurrentQueue<ReadOnlyMemory<char>> directories)
     {
         IntPtr dirp = Interop.opendir(currentDirectory.ToString());
         if (dirp == IntPtr.Zero)
             return Task.CompletedTask;
 
         IntPtr entry;
-        Dirent dirent = new() {
-            d_name = null
-        };
 
         char[] pathBuffer = GC.AllocateArray<char>(512, true);
-
         while ((entry = Interop.readdir(dirp)) != IntPtr.Zero)
         {
-            Marshal.PtrToStructure(entry, dirent);
+            IntPtr dNamePtr = entry + Marshal.OffsetOf<Dirent>("d_name").ToInt32();
+            string dName = Marshal.PtrToStringAnsi(dNamePtr) ?? string.Empty;
+            byte dType = Marshal.ReadByte(entry, Marshal.OffsetOf<Dirent>("d_type").ToInt32());
 
-            PathChannel.Writer.TryWrite((currentDirectory, dirent!.d_name.AsMemory()));
+            PathChannel.Writer.TryWrite((currentDirectory, dName.AsMemory()));
 
-            if (dirent.d_type != DtDir || dirent.d_name == "." || dirent.d_name == ".." ||
-                dirent.d_name == null) continue;
+            if (dType!= DtDir || dName== "." || dName== "..") continue;
 
             currentDirectory.Span.CopyTo(pathBuffer);
             pathBuffer[currentDirectory.Length] = Path.DirectorySeparatorChar;
             
-            dirent.d_name
+            dName
                 .AsSpan()
                 .CopyTo(pathBuffer.AsSpan().Slice(currentDirectory.Length + 1));
             
             directories
-                .Enqueue(pathBuffer.AsSpan().Slice(0, currentDirectory.Length + 1 + dirent.d_name.Length)
+                .Enqueue(pathBuffer.AsSpan().Slice(0, currentDirectory.Length + 1 + dName.Length)
                 .ToString()
                 .AsMemory());
         }
