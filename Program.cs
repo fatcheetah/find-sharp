@@ -69,8 +69,7 @@ internal static class Program
             currentDirectory.Span.CopyTo(pathBuffer);
             pathBuffer[currentDirectory.Length] = Path.DirectorySeparatorChar;
             
-            dName
-                .AsSpan()
+            dName.AsSpan()
                 .CopyTo(pathBuffer.AsSpan().Slice(currentDirectory.Length + 1));
             
             directories
