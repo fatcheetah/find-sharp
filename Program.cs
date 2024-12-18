@@ -19,13 +19,9 @@ internal static class Program
         if (searchInput == null)
             return;
 
-        var traverse = Task.Run(async () =>
-            await TraverseFileTreeAsync(rootDirectory)
-        );
-        var filterAndProcessTask = Task.Run(async () =>
-            await FilterAndProcessPaths(searchInput)
-        );
-        
+        Task traverse = Task.Run(() => TraverseFileTreeAsync(rootDirectory));
+        Task filterAndProcessTask = Task.Run(() => FilterAndProcessPaths(searchInput));
+
         await traverse;
         PathChannel.Writer.Complete();
         await filterAndProcessTask;
@@ -33,17 +29,15 @@ internal static class Program
 
     private static async Task TraverseFileTreeAsync(string rootDirectory)
     {
-        ConcurrentQueue<string> directories = new();
-        directories.Enqueue(rootDirectory);
+        ConcurrentQueue<ReadOnlyMemory<char>> directories = new();
+        directories.Enqueue(rootDirectory.AsMemory());
 
         List<Task> tasks = new();
         while (!directories.IsEmpty)
         {
-            while (directories.TryDequeue(out string? currentDirectory))
+            while (directories.TryDequeue(out ReadOnlyMemory<char> currentDirectory))
             {
-                Task task = Task.Run(async () => {
-                    await TraverseDirectoryAsync(currentDirectory, directories);
-                });
+                var task = Task.Run(async () => { await TraverseDirectoryAsync(currentDirectory, directories); });
                 tasks.Add(task);
             }
 
@@ -52,9 +46,10 @@ internal static class Program
         }
     }
 
-    private static Task TraverseDirectoryAsync(string currentDirectory, ConcurrentQueue<string> directories)
+    private static Task TraverseDirectoryAsync(ReadOnlyMemory<char> currentDirectory,
+        ConcurrentQueue<ReadOnlyMemory<char>> directories)
     {
-        IntPtr dirp = Interop.opendir(currentDirectory);
+        IntPtr dirp = Interop.opendir(currentDirectory.ToString());
         if (dirp == IntPtr.Zero)
             return Task.CompletedTask;
 
@@ -62,15 +57,29 @@ internal static class Program
         Dirent dirent = new() {
             d_name = null
         };
-        
+
+        char[] pathBuffer = GC.AllocateArray<char>(512, true);
+
         while ((entry = Interop.readdir(dirp)) != IntPtr.Zero)
         {
             Marshal.PtrToStructure(entry, dirent);
 
-            PathChannel.Writer.TryWrite((currentDirectory.AsMemory(), dirent!.d_name.AsMemory()));
+            PathChannel.Writer.TryWrite((currentDirectory, dirent!.d_name.AsMemory()));
 
-            if (dirent.d_type == DtDir && dirent.d_name != "." && dirent.d_name != ".." && dirent.d_name != null)
-                    directories.Enqueue(Path.Combine(currentDirectory, dirent.d_name));
+            if (dirent.d_type != DtDir || dirent.d_name == "." || dirent.d_name == ".." ||
+                dirent.d_name == null) continue;
+
+            currentDirectory.Span.CopyTo(pathBuffer);
+            pathBuffer[currentDirectory.Length] = Path.DirectorySeparatorChar;
+            
+            dirent.d_name
+                .AsSpan()
+                .CopyTo(pathBuffer.AsSpan().Slice(currentDirectory.Length + 1));
+            
+            directories
+                .Enqueue(pathBuffer.AsSpan().Slice(0, currentDirectory.Length + 1 + dirent.d_name.Length)
+                .ToString()
+                .AsMemory());
         }
 
         Interop.closedir(dirp);
@@ -80,8 +89,7 @@ internal static class Program
     private static async Task FilterAndProcessPaths(string search)
     {
         await foreach ((ReadOnlyMemory<char>? dir, ReadOnlyMemory<char>? path) in PathChannel.Reader.ReadAllAsync())
-        {
-            if (VSearch.SubStringMatcher(path, search)) Console.WriteLine($"{dir}/{path}");
-        }
+            if (VSearch.SubStringMatcher(path, search))
+                Console.WriteLine($"{dir}/{path}");
     }
 }
