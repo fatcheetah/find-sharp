@@ -84,8 +84,10 @@ internal static class Program
 
     private static async Task FilterAndProcessPaths(string search)
     {
+        await using StreamWriter writer = new(Console.OpenStandardOutput());
         await foreach ((ReadOnlyMemory<char>? dir, ReadOnlyMemory<char>? path) in PathChannel.Reader.ReadAllAsync())
             if (VSearch.SubStringMatcher(path, search))
-                Console.WriteLine($"{dir}/{path}");
+                await writer.WriteLineAsync($"{dir}/{path}");
+        await writer.FlushAsync();
     }
 }
