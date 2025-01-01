@@ -23,7 +23,7 @@ public static class VSearch
 
         pos = SliceSubstringSearch(pathSpan, inputSpan);
 
-        return pos > 0;
+        return pos != -1;
     }
 
 
@@ -38,6 +38,6 @@ public static class VSearch
                 ))
                 return i;
 
-        return 0;
+        return -1;
     }
 }
