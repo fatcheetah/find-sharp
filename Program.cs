@@ -55,7 +55,7 @@ internal static class Program
     private static Task TraverseDirectoryAsync(ReadOnlyMemory<char> currentDirectory,
         ref ConcurrentQueue<ReadOnlyMemory<char>> directories)
     {
-        IntPtr dirp = Interop.opendir(currentDirectory.ToString());
+        IntPtr dirp = Interop.OpenDirectory(currentDirectory.ToString());
 
         if (dirp == IntPtr.Zero)
             return Task.CompletedTask;
@@ -63,7 +63,7 @@ internal static class Program
         IntPtr entry;
         Span<char> pathBuffer = GC.AllocateArray<char>(512, true);
 
-        while ((entry = Interop.readdir(dirp)) != IntPtr.Zero)
+        while ((entry = Interop.ReadDirectory(dirp)) != IntPtr.Zero)
         {
             IntPtr dNamePtr = entry+Marshal.OffsetOf<Dirent>("d_name").ToInt32();
             string dName = Marshal.PtrToStringAnsi(dNamePtr) ?? string.Empty;
@@ -78,7 +78,7 @@ internal static class Program
             directories.Enqueue(pathBuffer.Slice(0, currentDirectory.Length+1+dName.Length).ToArray());
         }
 
-        Interop.closedir(dirp);
+        Interop.CloseDirectory(dirp);
 
         return Task.CompletedTask;
     }

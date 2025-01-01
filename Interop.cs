@@ -4,18 +4,20 @@ namespace find_sharp;
 
 internal partial class Interop
 {
-    [DllImport("libc.so.6")]
-    public static extern IntPtr opendir(string name);
+    [LibraryImport("libc.so.6", EntryPoint = "opendir",
+        StringMarshalling = StringMarshalling.Utf8
+    )]
+    public static partial IntPtr OpenDirectory(string name);
 
-    [DllImport("libc.so.6")]
-    public static extern IntPtr readdir(IntPtr dirp);
+    [LibraryImport("libc.so.6", EntryPoint = "readdir")]
+    public static partial IntPtr ReadDirectory(IntPtr dirp);
 
-    [DllImport("libc.so.6")]
-    public static extern int closedir(IntPtr dirp);
+    [LibraryImport("libc.so.6", EntryPoint = "closedir")]
+    public static partial int CloseDirectory(IntPtr dirp);
 }
 
 [StructLayout(LayoutKind.Sequential)]
-public class Dirent
+struct Dirent
 {
     public ulong d_ino;
     public long d_off;

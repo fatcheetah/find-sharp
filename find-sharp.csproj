@@ -6,9 +6,12 @@
         <RootNamespace>find_sharp</RootNamespace>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <PublishAot>true</PublishAot>
-        <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
         <GCLatencyMode>Batch</GCLatencyMode>
+    </PropertyGroup>
+    
+    <PropertyGroup>
+        <PublishAot>true</PublishAot>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
 </Project>
