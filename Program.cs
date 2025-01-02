@@ -39,12 +39,24 @@ internal static class Program
         directories.Enqueue(rootDirectory.AsMemory());
 
         List<Task> tasks = new();
+        SemaphoreSlim semaphore = new(Environment.ProcessorCount);
 
         while (!directories.IsEmpty)
         {
+            await semaphore.WaitAsync();
             while (directories.TryDequeue(out ReadOnlyMemory<char> currentDirectory))
             {
-                Task task = Task.Run(async () => { await TraverseDirectoryAsync(currentDirectory, ref directories); });
+                Task task = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await TraverseDirectoryAsync(currentDirectory, ref directories);
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                });
                 tasks.Add(task);
             }
 
