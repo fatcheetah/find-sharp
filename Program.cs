@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading.Channels;
 
 namespace find_sharp;
@@ -28,6 +29,7 @@ internal static class Program
         await traverse;
         PathChannel.Writer.Complete();
         await filterAndProcessTask;
+        await Console.Out.FlushAsync();
     }
 
 
@@ -86,19 +88,30 @@ internal static class Program
 
     private static async Task FilterAndProcessPaths(string search)
     {
+        StringBuilder stringBuilder = new();
+
         await foreach ((ReadOnlyMemory<char>? dir, ReadOnlyMemory<char>? path) in PathChannel.Reader.ReadAllAsync())
         {
             if (!VSearch.SubStringMatcher(path, search, out int colorStart)) continue;
 
-            await Console.Out.WriteAsync($"{dir}");
-            await Console.Out.WriteAsync('/');
-            await Console.Out.WriteAsync(path.Value.Slice(0, colorStart));
-            await Console.Out.WriteAsync("\u001b[31m");
-            await Console.Out.WriteAsync(path.Value.Slice(colorStart, search.Length));
-            await Console.Out.WriteAsync("\u001b[0m");
-            await Console.Out.WriteLineAsync(path.Value.Slice(colorStart+search.Length));
-        }
+            stringBuilder.Clear();
+            stringBuilder.Append(dir);
+            stringBuilder.Append('/');
+            stringBuilder.Append(path.Value.Slice(0, colorStart));
 
-        await Console.Out.FlushAsync();
+            if (!Console.IsOutputRedirected)
+            {
+                stringBuilder.Append("\u001b[31m");
+                stringBuilder.Append(path.Value.Slice(colorStart, search.Length));
+                stringBuilder.Append("\u001b[0m");
+            }
+            else
+            {
+                stringBuilder.Append(path.Value.Slice(colorStart, search.Length));
+            }
+
+            stringBuilder.Append(path.Value.Slice(colorStart+search.Length));
+            await Console.Out.WriteLineAsync(stringBuilder);
+        }
     }
 }
