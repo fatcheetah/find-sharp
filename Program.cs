@@ -35,8 +35,8 @@ internal static class Program
 
     private static async Task TraverseFileTreeAsync(string rootDirectory)
     {
-        ConcurrentQueue<ReadOnlyMemory<char>> directories = new();
-        directories.Enqueue(rootDirectory.AsMemory());
+        ConcurrentStack<ReadOnlyMemory<char>> directories = new();
+        directories.Push(rootDirectory.AsMemory());
 
         List<Task> tasks = new();
         SemaphoreSlim semaphore = new(Environment.ProcessorCount);
@@ -44,7 +44,7 @@ internal static class Program
         while (!directories.IsEmpty)
         {
             await semaphore.WaitAsync();
-            while (directories.TryDequeue(out ReadOnlyMemory<char> currentDirectory))
+            while (directories.TryPop(out ReadOnlyMemory<char> currentDirectory))
             {
                 Task task = Task.Run(async () =>
                 {
@@ -67,7 +67,7 @@ internal static class Program
 
 
     private static Task TraverseDirectoryAsync(ReadOnlyMemory<char> currentDirectory,
-        ref ConcurrentQueue<ReadOnlyMemory<char>> directories)
+        ref ConcurrentStack<ReadOnlyMemory<char>> directories)
     {
         IntPtr dirp = Interop.OpenDirectory(currentDirectory.ToString());
 
@@ -89,7 +89,7 @@ internal static class Program
             currentDirectory.Span.CopyTo(pathBuffer);
             pathBuffer[currentDirectory.Length] = Path.DirectorySeparatorChar;
             dName.AsSpan().CopyTo(pathBuffer.Slice(currentDirectory.Length+1));
-            directories.Enqueue(pathBuffer.Slice(0, currentDirectory.Length+1+dName.Length).ToArray());
+            directories.Push(pathBuffer.Slice(0, currentDirectory.Length+1+dName.Length).ToArray());
         }
 
         Interop.CloseDirectory(dirp);
