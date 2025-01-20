@@ -79,9 +79,9 @@ internal static class Program
 
         while ((entry = Interop.ReadDirectory(dirp)) != IntPtr.Zero)
         {
-            IntPtr dNamePtr = entry+Marshal.OffsetOf<Dirent>("d_name").ToInt32();
+            IntPtr dNamePtr = entry+Dirent.DNameOffset;
             string dName = Marshal.PtrToStringAnsi(dNamePtr) ?? string.Empty;
-            byte dType = Marshal.ReadByte(entry, Marshal.OffsetOf<Dirent>("d_type").ToInt32());
+            byte dType = Marshal.ReadByte(entry, Dirent.DTypeOffset);
             PathChannel.Writer.TryWrite((currentDirectory, dName.AsMemory()));
 
             if (dType != DtDir || dName == "." || dName == "..") continue;

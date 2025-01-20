@@ -26,4 +26,7 @@ struct Dirent
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
     public required string? d_name;
+    
+    public static readonly int DNameOffset = Marshal.OffsetOf<Dirent>("d_name").ToInt32();
+    public static readonly int DTypeOffset = Marshal.OffsetOf<Dirent>("d_type").ToInt32();
 }
