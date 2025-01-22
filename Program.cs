@@ -10,8 +10,8 @@ internal static class Program
 {
     private const byte DtDir = 4;
 
-    private static readonly Channel<(ReadOnlyMemory<char>, ReadOnlyMemory<char>)> PathChannel =
-        Channel.CreateUnbounded<(ReadOnlyMemory<char>, ReadOnlyMemory<char>)>();
+    private static readonly Channel<(ReadOnlyMemory<char>, ReadOnlyMemory<char>)[]> PathChannel =
+        Channel.CreateUnbounded<(ReadOnlyMemory<char>, ReadOnlyMemory<char>)[]>();
 
 
     private static async Task Main(string[] args)
@@ -69,6 +69,9 @@ internal static class Program
 
     private static readonly ArrayPool<char> BufferPool = ArrayPool<char>.Shared;
 
+    private static readonly ArrayPool<(ReadOnlyMemory<char>, ReadOnlyMemory<char>)> BatchPool =
+        ArrayPool<(ReadOnlyMemory<char>, ReadOnlyMemory<char>)>.Shared;
+
 
     private static async Task TraverseDirectoryAsync(ReadOnlyMemory<char> currentDirectory,
         ConcurrentStack<ReadOnlyMemory<char>> directories)
@@ -82,6 +85,7 @@ internal static class Program
         if (n < 0) return;
 
         char[] pathBuffer = BufferPool.Rent(512);
+        (ReadOnlyMemory<char>, ReadOnlyMemory<char>)[] batch = BatchPool.Rent(n);
 
         for (int i = 0; i < n; i++)
         {
@@ -89,7 +93,7 @@ internal static class Program
             IntPtr dNamePtr = entry+Dirent.DNameOffset;
             string dName = Marshal.PtrToStringAnsi(dNamePtr) ?? string.Empty;
             byte dType = Marshal.ReadByte(entry, Dirent.DTypeOffset);
-            await PathChannel.Writer.WriteAsync((currentDirectory, dName.AsMemory()));
+            batch[i] = (currentDirectory, dName.AsMemory());
 
             if (dType == DtDir && dName != "." && dName != "..")
             {
@@ -102,7 +106,11 @@ internal static class Program
             Interop.Free(entry);
         }
 
+        if (n > 0)
+            await PathChannel.Writer.WriteAsync(batch[..n]);
+
         BufferPool.Return(pathBuffer);
+        BatchPool.Return(batch);
         Interop.Free(nameList);
     }
 
@@ -111,28 +119,31 @@ internal static class Program
     {
         StringBuilder stringBuilder = new();
 
-        await foreach ((ReadOnlyMemory<char>? dir, ReadOnlyMemory<char>? path) in PathChannel.Reader.ReadAllAsync())
+        await foreach ((ReadOnlyMemory<char>, ReadOnlyMemory<char>)[] batch in PathChannel.Reader.ReadAllAsync())
         {
-            if (!VSearch.SubStringMatcher(path, search, out int colorStart)) continue;
-
-            stringBuilder.Clear();
-            stringBuilder.Append(dir);
-            stringBuilder.Append('/');
-            stringBuilder.Append(path.Value.Slice(0, colorStart));
-
-            if (!Console.IsOutputRedirected)
+            foreach ((ReadOnlyMemory<char> dir, ReadOnlyMemory<char> path) in batch)
             {
-                stringBuilder.Append("\u001b[31m");
-                stringBuilder.Append(path.Value.Slice(colorStart, search.Length));
-                stringBuilder.Append("\u001b[0m");
-            }
-            else
-            {
-                stringBuilder.Append(path.Value.Slice(colorStart, search.Length));
-            }
+                if (!VSearch.SubStringMatcher(path, search, out int colorStart)) continue;
 
-            stringBuilder.Append(path.Value.Slice(colorStart+search.Length));
-            await Console.Out.WriteLineAsync(stringBuilder);
+                stringBuilder.Clear();
+                stringBuilder.Append(dir);
+                stringBuilder.Append('/');
+                stringBuilder.Append(path.Slice(0, colorStart));
+
+                if (!Console.IsOutputRedirected)
+                {
+                    stringBuilder.Append("\u001b[31m");
+                    stringBuilder.Append(path.Slice(colorStart, search.Length));
+                    stringBuilder.Append("\u001b[0m");
+                }
+                else
+                {
+                    stringBuilder.Append(path.Slice(colorStart, search.Length));
+                }
+
+                stringBuilder.Append(path.Slice(colorStart+search.Length));
+                await Console.Out.WriteLineAsync(stringBuilder);
+            }
         }
     }
 }
