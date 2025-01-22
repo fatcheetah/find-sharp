@@ -97,7 +97,9 @@ internal static class Program
         }
 
         BufferPool.Return(pathBuffer);
-        Interop.CloseDirectory(dirp);
+
+        if (Interop.CloseDirectory(dirp) != 0) 
+            throw new ApplicationException($"Interop.CloseDirectory :: {dirp}");
     }
 
 
