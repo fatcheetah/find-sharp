@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using System.Buffers;
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Channels;
@@ -66,6 +67,9 @@ internal static class Program
     }
 
 
+    private static readonly ArrayPool<char> BufferPool = ArrayPool<char>.Shared;
+
+
     private static Task TraverseDirectoryAsync(ReadOnlyMemory<char> currentDirectory,
         ref ConcurrentStack<ReadOnlyMemory<char>> directories)
     {
@@ -75,7 +79,7 @@ internal static class Program
             return Task.CompletedTask;
 
         IntPtr entry;
-        Span<char> pathBuffer = GC.AllocateArray<char>(512, true);
+        char[] pathBuffer = BufferPool.Rent(512);
 
         while ((entry = Interop.ReadDirectory(dirp)) != IntPtr.Zero)
         {
@@ -88,10 +92,11 @@ internal static class Program
 
             currentDirectory.Span.CopyTo(pathBuffer);
             pathBuffer[currentDirectory.Length] = Path.DirectorySeparatorChar;
-            dName.AsSpan().CopyTo(pathBuffer.Slice(currentDirectory.Length+1));
-            directories.Push(pathBuffer.Slice(0, currentDirectory.Length+1+dName.Length).ToArray());
+            dName.AsSpan().CopyTo(pathBuffer.AsSpan(currentDirectory.Length+1));
+            directories.Push(pathBuffer.AsSpan(0, currentDirectory.Length+1+dName.Length).ToArray());
         }
 
+        BufferPool.Return(pathBuffer);
         Interop.CloseDirectory(dirp);
 
         return Task.CompletedTask;
