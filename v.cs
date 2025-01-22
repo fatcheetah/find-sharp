@@ -29,15 +29,8 @@ public static class VSearch
 
     private static int SliceSubstringSearch(ReadOnlySpan<char> pathSpan, ReadOnlySpan<char> inputSpan)
     {
-        int inputLength = inputSpan.Length;
-
-        for (int i = 0; i <= pathSpan.Length-inputLength; i++)
-            if (pathSpan.Slice(i, inputLength).Equals(inputSpan, _hasUpperChar!.Value
-                    ? StringComparison.Ordinal
-                    : StringComparison.OrdinalIgnoreCase
-                ))
-                return i;
-
-        return -1;
+        return _hasUpperChar!.Value
+            ? pathSpan.IndexOf(inputSpan)
+            : pathSpan.IndexOf(inputSpan, StringComparison.OrdinalIgnoreCase);
     }
 }
