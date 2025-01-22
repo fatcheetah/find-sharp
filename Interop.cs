@@ -4,16 +4,17 @@ namespace find_sharp;
 
 internal partial class Interop
 {
-    [LibraryImport("libc.so.6", EntryPoint = "opendir",
+    [LibraryImport("libc.so.6", EntryPoint = "scandir",
         StringMarshalling = StringMarshalling.Utf8
     )]
-    public static partial IntPtr OpenDirectory(string name);
+    public static partial int ScanDirectory(string dirp,
+        out IntPtr namelist,
+        IntPtr filter,
+        IntPtr compar);
 
-    [LibraryImport("libc.so.6", EntryPoint = "readdir")]
-    public static partial IntPtr ReadDirectory(IntPtr dirp);
 
-    [LibraryImport("libc.so.6", EntryPoint = "closedir")]
-    public static partial int CloseDirectory(IntPtr dirp);
+    [LibraryImport("libc.so.6", EntryPoint = "free")]
+    public static partial void Free(IntPtr ptr);
 }
 
 [StructLayout(LayoutKind.Sequential)]

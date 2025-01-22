@@ -73,33 +73,38 @@ internal static class Program
     private static async Task TraverseDirectoryAsync(ReadOnlyMemory<char> currentDirectory,
         ConcurrentStack<ReadOnlyMemory<char>> directories)
     {
-        IntPtr dirp = Interop.OpenDirectory(currentDirectory.ToString());
+        int n = Interop.ScanDirectory(currentDirectory.ToString(),
+            out IntPtr nameList,
+            IntPtr.Zero,
+            IntPtr.Zero
+        );
 
-        if (dirp == IntPtr.Zero)
-            return;
+        if (n < 0) return;
 
-        IntPtr entry;
+        IntPtr current = nameList;
         char[] pathBuffer = BufferPool.Rent(512);
 
-        while ((entry = Interop.ReadDirectory(dirp)) != IntPtr.Zero)
+        for (int i = 0; i < n; i++)
         {
+            IntPtr entry = Marshal.ReadIntPtr(current, i * IntPtr.Size);
             IntPtr dNamePtr = entry+Dirent.DNameOffset;
             string dName = Marshal.PtrToStringAnsi(dNamePtr) ?? string.Empty;
             byte dType = Marshal.ReadByte(entry, Dirent.DTypeOffset);
             await PathChannel.Writer.WriteAsync((currentDirectory, dName.AsMemory()));
 
-            if (dType != DtDir || dName == "." || dName == "..") continue;
+            if (dType == DtDir && dName != "." && dName != "..")
+            {
+                currentDirectory.Span.CopyTo(pathBuffer);
+                pathBuffer[currentDirectory.Length] = Path.DirectorySeparatorChar;
+                dName.AsSpan().CopyTo(pathBuffer.AsSpan(currentDirectory.Length+1));
+                directories.Push(pathBuffer.AsSpan(0, currentDirectory.Length+1+dName.Length).ToArray());
+            }
 
-            currentDirectory.Span.CopyTo(pathBuffer);
-            pathBuffer[currentDirectory.Length] = Path.DirectorySeparatorChar;
-            dName.AsSpan().CopyTo(pathBuffer.AsSpan(currentDirectory.Length+1));
-            directories.Push(pathBuffer.AsSpan(0, currentDirectory.Length+1+dName.Length).ToArray());
+            Interop.Free(entry);
         }
 
         BufferPool.Return(pathBuffer);
-
-        if (Interop.CloseDirectory(dirp) != 0) 
-            throw new ApplicationException($"Interop.CloseDirectory :: {dirp}");
+        Interop.Free(nameList);
     }
 
 
