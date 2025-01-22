@@ -118,6 +118,8 @@ internal static class Program
     private static async Task FilterAndProcessPaths(string search)
     {
         StringBuilder stringBuilder = new();
+        const string redStart = "\e[31m";
+        const string redEnd = "\e[0m";
 
         await foreach ((ReadOnlyMemory<char>, ReadOnlyMemory<char>)[] batch in PathChannel.Reader.ReadAllAsync())
         {
@@ -132,9 +134,9 @@ internal static class Program
 
                 if (!Console.IsOutputRedirected)
                 {
-                    stringBuilder.Append("\u001b[31m");
+                    stringBuilder.Append(redStart);
                     stringBuilder.Append(path.Slice(colorStart, search.Length));
-                    stringBuilder.Append("\u001b[0m");
+                    stringBuilder.Append(redEnd);
                 }
                 else
                 {
