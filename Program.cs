@@ -51,7 +51,7 @@ internal static class Program
                 {
                     try
                     {
-                        await TraverseDirectoryAsync(currentDirectory, ref directories);
+                        await TraverseDirectoryAsync(currentDirectory, directories);
                     }
                     finally
                     {
@@ -70,13 +70,13 @@ internal static class Program
     private static readonly ArrayPool<char> BufferPool = ArrayPool<char>.Shared;
 
 
-    private static Task TraverseDirectoryAsync(ReadOnlyMemory<char> currentDirectory,
-        ref ConcurrentStack<ReadOnlyMemory<char>> directories)
+    private static async Task TraverseDirectoryAsync(ReadOnlyMemory<char> currentDirectory,
+        ConcurrentStack<ReadOnlyMemory<char>> directories)
     {
         IntPtr dirp = Interop.OpenDirectory(currentDirectory.ToString());
 
         if (dirp == IntPtr.Zero)
-            return Task.CompletedTask;
+            return;
 
         IntPtr entry;
         char[] pathBuffer = BufferPool.Rent(512);
@@ -86,7 +86,7 @@ internal static class Program
             IntPtr dNamePtr = entry+Dirent.DNameOffset;
             string dName = Marshal.PtrToStringAnsi(dNamePtr) ?? string.Empty;
             byte dType = Marshal.ReadByte(entry, Dirent.DTypeOffset);
-            PathChannel.Writer.TryWrite((currentDirectory, dName.AsMemory()));
+            await PathChannel.Writer.WriteAsync((currentDirectory, dName.AsMemory()));
 
             if (dType != DtDir || dName == "." || dName == "..") continue;
 
@@ -98,8 +98,6 @@ internal static class Program
 
         BufferPool.Return(pathBuffer);
         Interop.CloseDirectory(dirp);
-
-        return Task.CompletedTask;
     }
 
 
