@@ -81,12 +81,11 @@ internal static class Program
 
         if (n < 0) return;
 
-        IntPtr current = nameList;
         char[] pathBuffer = BufferPool.Rent(512);
 
         for (int i = 0; i < n; i++)
         {
-            IntPtr entry = Marshal.ReadIntPtr(current, i * IntPtr.Size);
+            IntPtr entry = Marshal.ReadIntPtr(nameList, i * IntPtr.Size);
             IntPtr dNamePtr = entry+Dirent.DNameOffset;
             string dName = Marshal.PtrToStringAnsi(dNamePtr) ?? string.Empty;
             byte dType = Marshal.ReadByte(entry, Dirent.DTypeOffset);
